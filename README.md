@@ -65,7 +65,7 @@ Paper2MD 支持在 **Windows**、**Arch Linux / EndeavourOS**、**Ubuntu / Debia
 
 #### 2. 一键安装 Paper2MD
 ```bash
-pipx install git+https://github.com/<your-username>/paper2md.git
+pipx install git+https://github.com/xylu2024/paper2md.git
 ```
 安装完成后，在终端直接输入 `paper2md` 即可全局运行！
 
@@ -77,10 +77,10 @@ pipx install git+https://github.com/<your-username>/paper2md.git
 
 ```bash
 # 直接从 GitHub 仓库安装
-pip install git+https://github.com/<your-username>/paper2md.git
+pip install git+https://github.com/xylu2024/paper2md.git
 
 # 或者克隆本仓库到本地后安装（开发模式）
-git clone https://github.com/<your-username>/paper2md.git
+git clone https://github.com/xylu2024/paper2md.git
 cd paper2md
 pip install -e .
 ```
