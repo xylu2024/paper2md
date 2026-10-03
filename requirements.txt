@@ -1,0 +1,4 @@
+pymupdf>=1.24.0
+pymupdf4llm>=1.28.0
+rapid_latex_ocr>=0.0.9
+opencv-python-headless>=4.8.0
