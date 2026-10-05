@@ -1,46 +1,127 @@
 # Paper2MD 📄➡️📝
 
-> **High-Fidelity Academic PDF to Markdown Converter** with intelligent layout parsing, figure extraction, and local LaTeX formula OCR.
-> 针对学术论文（双栏排版、复杂图表、数学公式）优化的 Markdown 转换工具。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-lightgrey)](https://github.com/xylu2024/paper2md)
+[![Powered by PyMuPDF](https://img.shields.io/badge/layout-PyMuPDF4LLM-green)](https://github.com/pymupdf/pymupdf4llm)
+[![OCR: RapidLaTeXOCR](https://img.shields.io/badge/OCR-RapidLaTeXOCR-orange)](https://github.com/RapidAI/RapidLaTeXOCR)
+
+> **High-Fidelity Academic PDF to Markdown Converter**  
+> Engineered specifically for complex scientific literature (dual-column layouts, vector schematics, high-resolution plots, and dense mathematical formulas).
 
 ---
 
-## 🌟 Why Paper2MD? (为什么选择 Paper2MD)
+## 💡 Motivation: Why Paper2MD?
 
-现有的许多 PDF 转 Markdown 工具在处理学术期刊（如 Nature, Science, IEEE, ACS, Elsevier 等）时往往存在严重缺陷：
-- **微软官方 MarkItDown**：底层仅使用基础启发式规则，会将双栏排版误判为数千字符的**巨型表格表头**，英文单词粘连，无法离线提取插图，公式全部损坏。
-- **纯文本/基础 PyMuPDF**：虽然版面流较好，但论文中的**数学公式会被切片成数十张破碎的小图片**，无法作为文本渲染，污染插图目录。
-- **大模型方案 (Nougat / MinerU)**：虽然效果好，但动辄需要数十 GB 显存与繁重的 CUDA 依赖环境，普通办公或轻薄本难以快速本地运行。
+Converting complex scientific papers (e.g., from *Nature Portfolio*, *ACS*, *Science*, *IEEE*, *Elsevier*) into Markdown for note-taking in **Obsidian**, LLM knowledge indexing (RAG), or web viewing is notoriously difficult:
 
-**Paper2MD** 提供了一个**极速、轻量、高保真**的解决方案：
-1. **智能版面解构**：基于 PyMuPDF 布局分析引擎，完美还原双栏阅读流，消除伪表格与文本粘连。
-2. **公式转写与自动清理**：内置轻量级 ONNX 数学公式识别模型（**RapidLaTeXOCR**），单公式 0.3 秒识别，自动将公式转换为可直接渲染的 `$$ ... $$` KaTeX/MathJax 语法，并**自动清理公式碎图**。
-3. **高清图表提取**：仅提取正文中的真实科学图表与机理图，保存在规范命名的插图文件夹中，并在 Markdown 中自动建立相对路径引用。
+- **Microsoft MarkItDown**: Relies on basic heuristic rules. On dual-column academic PDFs, it misinterprets columns and margins as a **monstrous 20-column empty table header**, glues words together (`determinethecompletereaction...`), completely drops figures in offline mode, and scrambles formulas into ASCII gibberish.
+- **Raw PyMuPDF / Text Extractors**: While resolving reading flows, they slice mathematical equations into dozens of tiny PNG images that clutter your image folder and cannot be rendered natively as text.
+- **Heavy Multimodal Models (e.g., Nougat / MinerU)**: While accurate, they require tens of gigabytes of GPU VRAM, heavy CUDA toolchains, and minutes per paper, making them impractical for lightweight laptops or quick batch workflows.
+
+**Paper2MD** bridges this gap:
+1. **Two-Column Flow Restoration**: Powered by PyMuPDF layout analysis, eliminating column splitting and word gluing.
+2. **Local LaTeX Formula Recognition**: Automatically detects equation bounding boxes, passes them to a lightweight local ONNX model (**RapidLaTeXOCR**, ~0.3 s per equation), and outputs native KaTeX/MathJax `$$ ... $$` code with `\tag{}` equation numbers.
+3. **Clean Figure Management**: Extracts only authentic scientific figures and diagrams at high resolution (200+ DPI), while **automatically purging temporary equation snippet images** to keep your folder tidy.
+4. **Blazingly Fast & Lightweight**: Converts a 10-page dense article in 5–10 seconds on a standard CPU.
 
 ---
 
-## 📊 Feature Comparison (效果对比)
+## 🔬 Head-to-Head Comparison: MarkItDown vs. Paper2MD
 
-| 特性 | Microsoft MarkItDown | PyMuPDF4LLM 原生 | **Paper2MD (本项目)** |
+### 1. Dual-Column Layout & Headings
+*Tested on ACS JPCC (Bidmon et al., 2026)*
+
+* **Microsoft MarkItDown Output**:
+  ```markdown
+  | | pubs.acs.org/JPCC | | | | | | | | | | | | | | | Article |
+  | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+  | | Determination | | | | of the | Kinetic | | Rate | Law | of | Rare-Earth | | | Solvent | | |
+  | | Extraction | | Using | | Interferometry: | | | | The | Case | of | Samarium(III) | | | | |
+  | .selcitra dehsilbup erahs yletamitigel ot woh no snoitpo rof senilediuggnirahs/gro.sca.sbup//:sptth eeS | ABSTRACT: | The | growing | | demand | for rare-earths, | | which are | | | | | | | | |
+  ```
+  *(Result: Inexplicably converted into a huge broken table where body text only occupies the table header, and watermark text is reversed).*
+
+* **Paper2MD Output**:
+  ```markdown
+  # Determination of the Kinetic Rate Law of Rare-Earth Solvent Extraction Using Interferometry: The Case of Samarium(III)
+
+  **Alexander Bidmon, Kilian Ortmann, Yuheng He, Kerstin Eckert, and Zhe Lei\***
+
+  *Cite This: J. Phys. Chem. C 2026, 130, 1148−1157*
+
+  ### ABSTRACT
+  The growing demand for rare-earths, which are processed by using costly and environmentally unfriendly solvent extraction methods, requires a better understanding of the underlying reaction kinetics...
+  ```
+  *(Result: Clean hierarchy, clear headers, and natural reading flow).*
+
+---
+
+### 2. Typography & Word Gluing (Ligature Handling)
+
+* **Microsoft MarkItDown**:
+  ```text
+  determinethecompletereactionratelawofaliquid−liquidsolvent
+  ```
+* **Paper2MD**:
+  ```text
+  determine the complete reaction rate law of a liquid−liquid solvent
+  ```
+
+---
+
+### 3. Mathematical Formulas
+
+* **Microsoft MarkItDown**:
+  ```text
+  J=-D dc/dz (12) (dropped or mangled into surrounding table cells)
+  ```
+* **Paper2MD (Automatically converted to standard KaTeX)**:
+  ```markdown
+  The Sm(III) reaction rate at the interface is correlated by Fick’s first law:
+
+  $$
+  J = -D \frac{\partial c}{\partial z} \tag{12}
+  $$
+
+  The mass transfer follows Fick’s second law:
+
+  $$
+  \frac{\partial c}{\partial t} = D \frac{\partial^{2}c}{\partial z^{2}} \tag{13}
+  $$
+
+  The Stokes−Einstein−Sutherland equation estimates the diffusion coefficient:
+
+  $$
+  D = \frac{k_{\mathrm{B}} T}{6\pi \eta R} \tag{14}
+  $$
+  ```
+
+---
+
+### 4. Summary Matrix
+
+| Feature | Microsoft MarkItDown | PyMuPDF4LLM (Raw) | **Paper2MD** |
 | :--- | :--- | :--- | :--- |
-| **双栏排版还原** | ❌ 错乱为几十列空表格 | ✅ 自然段落与小节 | ✅ **自然段落与小节** |
-| **文字粘连 (Word Gluing)** | ❌ 严重粘字 | ✅ 正常单词间距 | ✅ **正常单词间距** |
-| **学术插图提取** | ❌ 离线为 0 张 (需云端 API) | ⚠️ 混杂公式与插图 | ✅ **提取真实高清图表 (200+ DPI)** |
-| **数学公式处理** | ❌ 乱码或丢失 | ⚠️ 导出为 PNG 图片切片 | ✅ **直接识别为 LaTeX `$$...$$` 语法** |
-| **Obsidian/渲染器兼容** | ❌ 无法阅读 | ⚠️ 满屏公式小碎图 | ✅ **公式开箱即完美渲染** |
-| **运行开销** | 极轻 (但质量差) | 极轻 (~2s) | **极轻 (~5-10s, 无需大显存)** |
+| **Dual-Column Layout** | ❌ Broken into giant empty tables | ✅ Natural reading flow | ✅ **Natural reading flow** |
+| **Word Spacing / Ligatures** | ❌ Severe word gluing | ✅ Normal spaces | ✅ **Normal spaces** |
+| **Figure Extraction** | ❌ 0 figures offline (needs Azure API) | ⚠️ Mixed formulas & figures | ✅ **Authentic figures only (200+ DPI)** |
+| **Mathematical Formulas** | ❌ Lost or corrupted | ⚠️ Exported as small PNG snippets | ✅ **OCR-converted to LaTeX `$$...$$`** |
+| **Obsidian / Typora Native Math**| ❌ Cannot render | ⚠️ Cluttered with PNG links | ✅ **100% native vector rendering** |
+| **Footnotes & References** | ❌ Scrambled | ✅ Superscript (`<sup>1</sup>`) | ✅ **Superscript (`<sup>1</sup>`)** |
+| **Hardware Overhead** | Lightweight (poor output) | Lightweight (~2s) | **Lightweight (~5-10s, runs on any CPU)** |
 
 ---
 
-## 📦 Installation (安装教程)
+## 📦 Installation
 
-Paper2MD 支持在 **Windows**、**Arch Linux / EndeavourOS**、**Ubuntu / Debian** 以及 **macOS** 上一键部署。
+Paper2MD supports **Windows**, **Linux (Arch Linux / EndeavourOS, Ubuntu / Debian)**, and **macOS**.
 
-### 方式一：推荐通过 `pipx` 安装（全平台通用，无需折腾虚拟环境）
+### Option A: Install via `pipx` (Recommended for all platforms)
 
-`pipx` 可以将 Python 命令行工具自动隔离安装并直接注册到系统的全局环境变量中，在 **Arch / EndeavourOS（避免 PEP 668 报错）** 和 **Windows** 上最推荐：
+[`pipx`](https://pypa.github.io/pipx/) isolates the package and automatically exposes the `paper2md` command globally without polluting your system Python environment. This is especially ideal for **Arch Linux / EndeavourOS** (avoids PEP 668 `externally-managed-environment` errors):
 
-#### 1. 安装 pipx
+#### 1. Install pipx (if not already installed)
 * **Arch Linux / EndeavourOS**:
   ```bash
   sudo pacman -S python-pipx
@@ -61,107 +142,114 @@ Paper2MD 支持在 **Windows**、**Arch Linux / EndeavourOS**、**Ubuntu / Debia
   pip install pipx
   pipx ensurepath
   ```
-*(运行 `pipx ensurepath` 后请重启终端使环境变量生效)*
+*(Restart your terminal after running `pipx ensurepath`)*
 
-#### 2. 一键安装 Paper2MD
+#### 2. Install Paper2MD globally
 ```bash
 pipx install git+https://github.com/xylu2024/paper2md.git
 ```
-安装完成后，在终端直接输入 `paper2md` 即可全局运行！
+`paper2md` is now globally available in any terminal!
 
 ---
 
-### 方式二：标准 `pip` 安装
+### Option B: Standard `pip` Installation
 
-如果你更习惯在已有的虚拟环境或全局 Python 环境中安装：
+You can install Paper2MD directly into your active Python virtual environment:
 
 ```bash
-# 直接从 GitHub 仓库安装
+# Direct install from GitHub
 pip install git+https://github.com/xylu2024/paper2md.git
 
-# 或者克隆本仓库到本地后安装（开发模式）
+# Or clone and install in editable mode for development
 git clone https://github.com/xylu2024/paper2md.git
 cd paper2md
 pip install -e .
 ```
 
-> **Arch Linux / EndeavourOS 用户提示**：  
-> 若直接在系统 Python 下使用 `pip install` 提示 `externally-managed-environment`，建议先创建虚拟环境：  
-> `python -m venv ~/.local/share/paper2md-env`  
-> `source ~/.local/share/paper2md-env/bin/activate`  
-> 然后再执行 `pip install .` 即可。
+> **Arch Linux / EndeavourOS Tip**:  
+> If running `pip install` on system Python throws `error: externally-managed-environment`, create a dedicated venv first:  
+> `python -m venv ~/.local/share/paper2md-env && source ~/.local/share/paper2md-env/bin/activate`
 
 ---
 
-## 🚀 Usage (使用说明)
+## 🚀 CLI Usage
 
-### 1. 命令行调用 (CLI)
+### Basic Commands
 
 ```bash
-# 转换单篇学术文献（自动在同目录下生成 .md 文件与 _figures 文件夹）
+# 1. Convert a single paper (creates paper.md and a clean figures folder)
 paper2md "path/to/paper.pdf"
 
-# 批量转换当前目录下的所有 PDF 文件
+# 2. Batch convert all PDF papers in the current directory
 paper2md .
 
-# 批量转换指定目录下的所有 PDF 文件
-paper2md "D:/Literature/My_Papers"
+# 3. Batch convert all PDF papers in a target directory
+paper2md "D:/PhD/Literature"
 
-# 自定义插图导出分辨率（默认 200 DPI，高清论文建议 300）
+# 4. Custom figure DPI resolution (default: 200, use 300 for high-res publication figures)
 paper2md "paper.pdf" --dpi 300
 
-# 纯文字/图表提取模式（跳过公式 OCR 加快速度）
+# 5. Fast mode: Skip formula OCR (keeps equations as images)
 paper2md "paper.pdf" --no-ocr
 ```
 
-### 2. Python 模块调用 (Python API)
+---
 
-你也可以在自己的脚本或爬虫/文献管理工作流中直接调用：
+## 🐍 Python API Usage
+
+You can seamlessly integrate Paper2MD into your own research scripts or document ingestion pipelines:
 
 ```python
 from paper2md import convert_pdf_to_md
 
-# 转换论文并返回生成的 markdown 路径
-md_path = convert_pdf_to_md(
-    pdf_path="path/to/paper.pdf",
-    output_md_path="output.md",      # 可选，默认同名
-    dpi=200,                         # 图片分辨率
-    enable_formula_ocr=True          # 是否开启公式转 LaTeX
+# Convert PDF and get path of resulting markdown file
+output_path = convert_pdf_to_md(
+    pdf_path="path/to/article.pdf",
+    output_md_path="output.md",      # Optional: defaults to same name
+    dpi=200,                         # Optional: figure resolution
+    enable_formula_ocr=True          # Optional: whether to run LaTeX OCR
 )
 
-print(f"Conversion complete: {md_path}")
+print(f"Successfully converted to: {output_path}")
 ```
 
 ---
 
-## 📐 转换效果展示 (Formula Example)
+## 📂 Output Folder Structure
 
-被识别转换后的公式将以标准数学块呈现，Obsidian、Typora、VS Code 或 GitHub Markdown 会自动将其渲染为矢量排版：
+When processing `Bidmon_2026.pdf`, Paper2MD generates:
 
-```markdown
-The reaction rate follows Fick’s first law:
-
-$$
-J = -D \frac{\partial c}{\partial z} \tag{12}
-$$
-
-The Stokes-Einstein equation is applied to estimate diffusion:
-
-$$
-D = \frac{k_{\mathrm{B}} T}{6\pi \eta R} \tag{14}
-$$
+```text
+Literature/
+├── Bidmon_2026.pdf
+├── Bidmon_2026.md                    <-- Clean Markdown with LaTeX equations
+└── Bidmon_2026_figures/              <-- Only genuine figures & charts
+    ├── Bidmon_2026.pdf-0004-03.png   <-- Figure 1
+    ├── Bidmon_2026.pdf-0005-05.png   <-- Figure 2
+    └── ...
 ```
+*(All temporary formula image slices are automatically deleted after OCR recognition to ensure zero folder pollution).*
 
 ---
 
-## 🛠️ 依赖说明 (Dependencies)
+## 🛠️ Core Dependencies
 
-* [PyMuPDF](https://github.com/pymupdf/PyMuPDF) & [PyMuPDF4LLM](https://github.com/pymupdf/pymupdf4llm): 核心排版解构与图文提取。
-* [RapidLaTeXOCR](https://github.com/RapidAI/RapidLaTeXOCR): 极速离线数学公式识别引擎（基于 ONNXRuntime）。
-* `opencv-python-headless`: 图像预处理后端（无 GUI 依赖，适配无头服务器与各类 Linux 发行版）。
+- **[PyMuPDF](https://github.com/pymupdf/PyMuPDF)** & **[PyMuPDF4LLM](https://github.com/pymupdf/pymupdf4llm)**: State-of-the-art document layout parser and reading-flow deconstruction.
+- **[RapidLaTeXOCR](https://github.com/RapidAI/RapidLaTeXOCR)**: Lightweight, high-accuracy offline LaTeX equation OCR based on ONNXRuntime.
+- **`opencv-python-headless`**: Fast image preprocessing backend without desktop GUI dependencies, fully compatible with headless Linux environments.
 
 ---
 
 ## 📄 License
 
-本项目基于 [MIT License](LICENSE) 开源。欢迎 Star、Fork 与提 Issue！
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## ✍️ Authors & Institutional Affiliation
+
+**Dipl.-Ing. Xueyong Lu** (he/him)  
+Doctoral Researcher / Research Associate  
+Department: Fluid Dynamics of Resource Technology Processes  
+Institute of Fluid Dynamics  
+Helmholtz-Zentrum Dresden - Rossendorf (HZDR)  
