@@ -28,9 +28,76 @@ Converting complex scientific papers (e.g., from *Nature Portfolio*, *ACS*, *Sci
 
 ---
 
-## 🔬 Head-to-Head Comparison: MarkItDown vs. Paper2MD
+### 🔬 Head-to-Head Comparison: MarkItDown vs. Paper2MD
 
-### 1. Dual-Column Layout & Headings
+To demonstrate the real-world conversion quality on dense academic literature, we benchmarked **Microsoft MarkItDown** against **Paper2MD** using peer-reviewed papers from Elsevier (*International Journal of Refrigeration*, 2015) and ACS (*Journal of Physical Chemistry C*, 2026).
+
+---
+
+### 1. Math Formulas & Subscripts (数学公式、符号与下角标)
+*Tested on Elsevier Int. J. Refrigeration (2015) — Complex Exponents, Diacritics & Equation Bounding Boxes*
+
+![Math & Subscripts Comparison](docs/images/comparison_math.png)
+
+* **Microsoft MarkItDown**:
+  - **Equations dropped**: Mathematical equations are stripped of LaTeX structure, mangled into plain text, or sliced into fragmented Markdown table pipes (e.g. `| a x 3 þbx2þcxþdj | ¼AþBe(cid:2)Cx | (cid:7) : | (A.2) |`).
+  - **Subscripts wiped**: Because underlying text extractors lack baseline awareness, subscripts are merged directly into base letters (`Hext`, `Hdem`, `Hint`, `m0`).
+  - **Corrupted control bytes**: Elsevier 3B2 custom font encodings decay into `(cid:2)Cx`, `(cid:7)`, and `¼` instead of `=`.
+  - **Column collisions**: Two-column reading order fails, scrambling conclusion paragraphs directly across the equations.
+
+* **Paper2MD (Ours)**:
+  - **Native KaTeX Blocks**: Automatically detects equation bounding boxes and converts them via RapidLaTeXOCR into standard `$$ ... $$` math blocks.
+  - **Automatic Equation Tagging**: Accurately recognizes and preserves equation labels like `\tag{A.1}` and `\tag{A.2}`.
+  - **Geometry-Aware Subscript Detection**: Analyzes font size ratios and vertical baseline displacement ($\Delta y$), cleanly recovering variable subscripts (`H_{ext}`, `H_{dem}`, `H_{int}`, `\mu_0`, `\Delta T_{ad}`).
+  - **Full Font Healing**: Restores mathematical equality (`=`), signs (`+`, `-`), and exponential decay (`e^{-Cx}`).
+
+```markdown
+$$
+T_{ex}(x) = ax^{3} + bx^{2} + cx + d \tag{A.1}
+$$
+
+$$
+ax^{3} + bx^{2} + cx + d|_{fi} = A + Be^{-Cx}|_{fi} \tag{A.2}
+$$
+```
+
+---
+
+### 2. Complex Academic Tables & Units (复杂学术表格与物理量单位)
+*Tested on Elsevier 3B2 Multi-Column Nomenclature Table with Negative Exponents & Greek Symbols*
+
+![Table Comparison](docs/images/comparison_table.png)
+
+* **Microsoft MarkItDown**:
+  - **Shattered Grid**: Misidentifies whitespace as dozens of empty phantom columns (`| | | | | | |`).
+  - **Dropped Rows**: Critical rows (`Cp`, `Hext`, `H dem`) are ejected outside the table as disjointed text.
+  - **Corrupted Unit Exponents**: Negative exponents turn into control bytes `[Am(cid:2)1]`, and dimensionless quantities become raw placeholders `[e]`.
+
+* **Paper2MD (Ours)**:
+  - **Clean 4-Column Grid**: Exact grid alignment without phantom columns or missing rows.
+  - **Unit Exponent Healing**: Accurately reconstructs negative unit powers: `[J (gK)⁻¹]`, `[m² s⁻¹]`, `[A m⁻¹]`, `[Vs Am⁻¹]`.
+  - **Standard Dimensionless Quantities**: Restores standard dimensionless indicators `[-]`.
+  - **Intact Variable Subscripts & Greek Symbols**: Perfectly renders `B_{ext}`, `C_p`, `H_{ext}`, `H_{dem}`, `k_f`, `\mu_0`, `\lambda`, and `\Delta T_{ad}`.
+
+---
+
+### 3. Scientific Figures & Multimodal Extraction (科学插图与多模态图表提取)
+*Tested on Multi-Panel Academic Diagrams & Interferometric Optical Setups*
+
+![Figure Extraction Comparison](docs/images/comparison_figures.png)
+
+* **Microsoft MarkItDown**:
+  - **0 Figures Extracted**: Offline conversion completely ignores all graphics, schematics, and plots. Output Markdown contains zero `![]` tags.
+  - **Evidence Loss**: Critical scientific evidence (3D setup diagrams, interferogram fringes, calibration curves) is silently lost unless tied to expensive cloud API endpoints.
+
+* **Paper2MD (Ours)**:
+  - **14 Figures Auto-Extracted**: All authentic figures extracted at high resolution (200+ DPI) into structured folders (`doc_2015_figures/`).
+  - **Seamless Markdown Embedding**: Automatically inserted into Markdown with clean relative paths (`![](doc_2015_figures/xxx.png)`).
+  - **Smart Cleanup**: Automatically purges temporary formula OCR snippets so your figures directory stays clean and clutter-free.
+
+---
+
+### 4. Dual-Column Layout & Headings
 *Tested on ACS JPCC (Bidmon et al., 2026)*
 
 * **Microsoft MarkItDown Output**:
@@ -58,59 +125,19 @@ Converting complex scientific papers (e.g., from *Nature Portfolio*, *ACS*, *Sci
 
 ---
 
-### 2. Typography & Word Gluing (Ligature Handling)
+### 5. Summary Matrix
 
-* **Microsoft MarkItDown**:
-  ```text
-  determinethecompletereactionratelawofaliquid−liquidsolvent
-  ```
-* **Paper2MD**:
-  ```text
-  determine the complete reaction rate law of a liquid−liquid solvent
-  ```
-
----
-
-### 3. Mathematical Formulas
-
-* **Microsoft MarkItDown**:
-  ```text
-  J=-D dc/dz (12) (dropped or mangled into surrounding table cells)
-  ```
-* **Paper2MD (Automatically converted to standard KaTeX)**:
-  ```markdown
-  The Sm(III) reaction rate at the interface is correlated by Fick’s first law:
-
-  $$
-  J = -D \frac{\partial c}{\partial z} \tag{12}
-  $$
-
-  The mass transfer follows Fick’s second law:
-
-  $$
-  \frac{\partial c}{\partial t} = D \frac{\partial^{2}c}{\partial z^{2}} \tag{13}
-  $$
-
-  The Stokes−Einstein−Sutherland equation estimates the diffusion coefficient:
-
-  $$
-  D = \frac{k_{\mathrm{B}} T}{6\pi \eta R} \tag{14}
-  $$
-  ```
-
----
-
-### 4. Summary Matrix
-
-| Feature | Microsoft MarkItDown | PyMuPDF4LLM (Raw) | **Paper2MD** |
+| Feature | Microsoft MarkItDown | PyMuPDF4LLM (Raw) | **Paper2MD (v0.1.2)** |
 | :--- | :--- | :--- | :--- |
-| **Dual-Column Layout** | ❌ Broken into giant empty tables | ✅ Natural reading flow | ✅ **Natural reading flow** |
-| **Word Spacing / Ligatures** | ❌ Severe word gluing | ✅ Normal spaces | ✅ **Normal spaces** |
+| **Dual-Column Reading Flow** | ❌ Broken into giant empty tables | ✅ Natural reading flow | ✅ **Natural reading flow** |
 | **Figure Extraction** | ❌ 0 figures offline (needs Azure API) | ⚠️ Mixed formulas & figures | ✅ **Authentic figures only (200+ DPI)** |
-| **Mathematical Formulas** | ❌ Lost or corrupted | ⚠️ Exported as small PNG snippets | ✅ **OCR-converted to LaTeX `$$...$$`** |
-| **Obsidian / Typora Native Math**| ❌ Cannot render | ⚠️ Cluttered with PNG links | ✅ **100% native vector rendering** |
+| **Formula Recognition** | ❌ Lost or mangled into plain text | ⚠️ Cluttered with PNG image snippets | ✅ **Native KaTeX `$$...$$` with `\tag{}`** |
+| **Subscripts & Greek Letters** | ❌ Erased (`Hext`, `Bext`, `m0`) | ❌ Ignored by layout engine | ✅ **Geometry-aware subscript detection (`H_{ext}`, `\mu_0`)** |
+| **Table Formatting & Units** | ❌ Shattered grid, `[Am(cid:2)1]` | ⚠️ Raw unhealed font codes | ✅ **Clean 4-column tables & `[J (gK)⁻¹]`, `[-]`** |
+| **Font & Symbol Healing** | ❌ Replacement chars (``) | ❌ Raw unmapped glyphs | ✅ **Automated CMap translation & zero ``** |
+| **Obsidian / Typora Native Math**| ❌ Cannot render | ⚠️ Cluttered with PNG links | ✅ **100% native vector math rendering** |
 | **Footnotes & References** | ❌ Scrambled | ✅ Superscript (`<sup>1</sup>`) | ✅ **Superscript (`<sup>1</sup>`)** |
-| **Hardware Overhead** | Lightweight (poor output) | Lightweight (~2s) | **Lightweight (~5-10s, runs on any CPU)** |
+| **Hardware Overhead** | Lightweight (poor output) | Lightweight (~2s) | **Lightweight (~5-10s, 100% CPU offline)** |
 
 ---
 

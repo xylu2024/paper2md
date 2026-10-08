@@ -19,6 +19,7 @@ ENV/
 *_figures/
 *.pdf
 *.png
+!docs/images/*.png
 *.jpg
 .idea/
 .vscode/

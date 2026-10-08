@@ -24,7 +24,7 @@ from pymupdf4llm.helpers.document_layout import (
     GRAPHICS_TEXT,
 )
 
-from .cleaner import clean_textlines, clean_table_markdown, clean_markdown_text
+from .cleaner import clean_font_span, clean_textlines, clean_table_markdown, clean_markdown_text
 
 try:
     from rapid_latex_ocr import LaTeXOCR
@@ -94,6 +94,267 @@ def clean_latex(latex_str: str) -> str:
     return (s + tag).strip()
 
 
+def _install_subscript_patches():
+    """
+    Patch pymupdf4llm helpers to reliably detect and preserve subscripts (e.g. H_ext, H_dem)
+    and superscripts in both prose paragraphs and table cells.
+    """
+    from pymupdf4llm.helpers import get_text_lines, document_layout, utils
+
+    def patched_get_raw_lines(
+        textpage=None,
+        blocks=None,
+        clip=None,
+        tolerance=3,
+        ignore_invisible=True,
+        only_horizontal=True,
+    ):
+        def sanitize_spans(line):
+            line.sort(key=lambda s: s["bbox"].x0)
+            for i in range(len(line) - 1, 0, -1):
+                s0 = line[i - 1]
+                s1 = line[i]
+                delta = s1["size"] * 0.1
+                # Do NOT join if font size is noticeably different (subscript/superscript)
+                if (
+                    s0["bbox"].x1 + delta < s1["bbox"].x0
+                    or abs(s0["size"] - s1["size"]) > 0.5
+                    or (s0["flags"], s0["char_flags"] & ~2) != (s1["flags"], s1["char_flags"] & ~2)
+                ):
+                    continue
+                if s0["text"] != s1["text"] or s0["bbox"] != s1["bbox"]:
+                    s0["text"] += s1["text"]
+                s0["bbox"] |= s1["bbox"]
+                del line[i]
+                line[i - 1] = s0
+
+            # Mark subscripts and superscripts across spans
+            for i in range(len(line) - 1):
+                s0 = line[i]
+                s1 = line[i + 1]
+                sz0 = s0.get("size", 0)
+                sz1 = s1.get("size", 0)
+                if sz0 > 0 and (sz1 / sz0 <= 0.88):
+                    orig0 = s0.get("origin")
+                    orig1 = s1.get("origin")
+                    if orig0 and orig1:
+                        dy = orig1[1] - orig0[1]
+                    else:
+                        dy = s1["bbox"].y1 - s0["bbox"].y1
+                    if dy > 0.4:
+                        s1["subscript"] = True
+                    elif dy < -0.4:
+                        s1["superscript"] = True
+            return line
+
+        if not isinstance(textpage, pymupdf.TextPage) and blocks is None:
+            raise ValueError("Either textpage or blocks must be provided.")
+
+        if clip is None and textpage is not None:
+            clip = textpage.rect
+        if blocks is None:
+            blocks = [
+                b
+                for b in textpage.extractDICT()["blocks"]
+                if b["type"] == 0 and not utils.bbox_is_empty(b["bbox"])
+            ]
+        spans = []
+        for bno, b in enumerate(blocks):
+            if utils.are_disjoint(b["bbox"], clip):
+                continue
+            for lno, line in enumerate(b["lines"]):
+                if utils.are_disjoint(line["bbox"], clip):
+                    continue
+                line_dir = line["dir"]
+                if only_horizontal and abs(1 - line_dir[0]) > 1e-3:
+                    continue
+                for sno, s in enumerate(line["spans"]):
+                    if utils.is_white(s["text"]):
+                        continue
+                    if (
+                        not s["font"].startswith(utils.TYPE3_FONT_NAME)
+                        and s["alpha"] == 0
+                        and ignore_invisible
+                    ):
+                        continue
+                    sbbox = pymupdf.Rect(s["bbox"])
+                    sbbox.y0 = line["bbox"][1]
+                    sbbox.y1 = line["bbox"][3]
+                    s["bbox"] = sbbox
+                    if not utils.almost_in_bbox(s["bbox"], clip, portion=0.51):
+                        continue
+                    s["line"] = lno
+                    s["block"] = bno
+                    spans.append(s)
+
+        lines = []
+        while spans:
+            span0 = spans.pop(0)
+            sbbox0 = span0["bbox"]
+            same_line = [span0]
+            y0_0, y1_0 = sbbox0.y0, sbbox0.y1
+            for i in range(len(spans) - 1, -1, -1):
+                s = spans[i]
+                sbbox = s["bbox"]
+                if (
+                    abs(sbbox.y0 - y0_0) <= tolerance
+                    or abs(sbbox.y1 - y1_0) <= tolerance
+                    or utils.almost_in_bbox(sbbox, sbbox0, portion=0.6)
+                ):
+                    same_line.append(s)
+                    sbbox0 |= sbbox
+                    del spans[i]
+            same_line = sanitize_spans(same_line)
+            line_bbox = pymupdf.Rect()
+            for s in same_line:
+                line_bbox |= s["bbox"]
+            lines.append((line_bbox, same_line))
+
+        lines.sort(key=lambda l: (l[0].y1, l[0].x0))
+        return lines
+
+    get_text_lines.get_raw_lines = patched_get_raw_lines
+    document_layout.get_raw_lines = patched_get_raw_lines
+
+    def smart_get_styled_text(spans):
+        output = ""
+        old_line = 0
+        old_block = 0
+
+        for i, s in enumerate(spans):
+            superscript = s["flags"] & pymupdf.TEXT_FONT_SUPERSCRIPT or s.get("superscript", False)
+            subscript = s.get("subscript", False)
+            mono = s["flags"] & pymupdf.TEXT_FONT_MONOSPACED and not utils.is_ocr_text(s)
+            bold = (
+                s["flags"] & pymupdf.TEXT_FONT_BOLD
+                or s["char_flags"] & pymupdf.mupdf.FZ_STEXT_BOLD
+            )
+            italic = s["flags"] & pymupdf.TEXT_FONT_ITALIC
+            strikeout = s["char_flags"] & pymupdf.mupdf.FZ_STEXT_STRIKEOUT
+            underline = s["char_flags"] & pymupdf.mupdf.FZ_STEXT_UNDERLINE
+            highlight = s["char_flags"] & pymupdf.mupdf.FZ_STEXT_HIGHLIGHT
+
+            prefix = []
+            suffix = []
+
+            if subscript:
+                prefix.append("<sub>")
+                suffix.append("</sub>")
+            elif superscript:
+                prefix.append("<sup>")
+                suffix.append("</sup>")
+
+            if bold:
+                prefix.append("**")
+                suffix.append("**")
+
+            if italic:
+                prefix.append("_")
+                suffix.append("_")
+
+            if strikeout:
+                prefix.append("~~")
+                suffix.append("~~")
+
+            if underline:
+                prefix.append("<u>")
+                suffix.append("</u>")
+
+            if highlight:
+                prefix.append("<mark>")
+                suffix.append("</mark>")
+
+            if mono:
+                prefix.append("`")
+                suffix.append("`")
+
+            prefix = "".join(prefix)
+            suffix = "".join(reversed(suffix))
+
+            span_text = s["text"].strip()
+            text = f"{prefix}{span_text}{suffix} "
+
+            if output.endswith(f"{suffix} "):
+                output = output[: -len(suffix) - 1]
+                if superscript or subscript:
+                    text = span_text + suffix + " "
+                else:
+                    text = " " + span_text + suffix + " "
+
+            old_line = s["line"]
+            old_block = s["block"]
+            if superscript or subscript:
+                output = output.rstrip(" ")
+            output += text
+
+        return output, suffix
+
+    document_layout.get_styled_text = smart_get_styled_text
+
+    def smart_extract_cells(table_blocks, cell, markdown=False, ocrpage=False):
+        text = ""
+        for block in table_blocks:
+            if utils.are_disjoint(block["bbox"], cell):
+                continue
+            for line in block["lines"]:
+                if utils.are_disjoint(line["bbox"], cell):
+                    continue
+                if text:
+                    text += "<br>" if markdown else "\n"
+
+                prev_span = None
+                for span in line["spans"]:
+                    if utils.are_disjoint(span["bbox"], cell):
+                        continue
+                    if ocrpage:
+                        span_text = span["text"]
+                    else:
+                        span_text = ""
+                        for char in span["chars"]:
+                            this_char = char["c"]
+                            if utils.almost_in_bbox(char["bbox"], cell, portion=0.5):
+                                span_text += this_char
+                            elif this_char in utils.WHITE_CHARS:
+                                span_text += " "
+                    if not span_text:
+                        continue
+
+                    span_text = clean_font_span(span_text, span.get("font", ""))
+
+                    if not markdown:
+                        text += span_text
+                        prev_span = span
+                        continue
+
+                    superscript = bool(span["flags"] & pymupdf.TEXT_FONT_SUPERSCRIPT)
+                    subscript = False
+
+                    if prev_span and span_text.strip():
+                        sz0 = prev_span["size"]
+                        sz1 = span["size"]
+                        if sz0 > 0 and (sz1 / sz0 <= 0.88):
+                            dy_top = span["bbox"][1] - prev_span["bbox"][1]
+                            if dy_top > 0.4:
+                                subscript = True
+                            elif dy_top < -0.4:
+                                superscript = True
+
+                    prefix = []
+                    suffix = []
+                    if subscript:
+                        prefix.append("<sub>")
+                        suffix.append("</sub>")
+                    elif superscript:
+                        prefix.append("<sup>")
+                        suffix.append("</sup>")
+
+                    text += "".join(prefix) + span_text + "".join(reversed(suffix))
+                    prev_span = span
+        return text
+
+    utils.extract_cells = smart_extract_cells
+
+
 def convert_pdf_to_md(
     pdf_path: str,
     output_md_path: Optional[str] = None,
@@ -114,6 +375,7 @@ def convert_pdf_to_md(
     Returns:
         The path of the generated markdown file.
     """
+    _install_subscript_patches()
     pdf_file = Path(pdf_path).resolve()
     if not pdf_file.exists():
         raise FileNotFoundError(f"PDF file not found: {pdf_file}")

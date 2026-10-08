@@ -42,14 +42,27 @@ def clean_font_span(text: str, font: str) -> str:
         text = text.replace("Þ", ")")
         text = text.replace("j", "|")
 
-    # 4. Symbol Greek letters (AdvPS4721B4)
+    # 4. Symbol Greek letters (AdvPS4721B4, AdvP4721B4)
     if "4721b4" in font_lower:
+        if text == "m":
+            return "μ"
         if text == "r":
             return "ρ"
         if text == "u":
             return "ω"
+        if text == "l":
+            return "λ"
+        if text == "p":
+            return "π"
         if text == "4":
             return "Δϕ"
+        if text == "J":
+            return "ψ"
+
+    # 4b. Greek Capital Delta in AdvP3F4C13
+    if "3f4c13" in font_lower:
+        if text == "D":
+            return "Δ"
 
     # 5. Approx / punctuation in AdvPS3FDD77
     if "3fdd77" in font_lower:
@@ -57,6 +70,8 @@ def clean_font_span(text: str, font: str) -> str:
             return "≈"
         if text == ",":
             return "×"
+        if text == "J":
+            return "ψ"
 
     return text
 
@@ -88,7 +103,7 @@ def clean_textlines(textlines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def clean_table_markdown(table_md: str) -> str:
     """
-    Normalize table markdown content (units, math symbols, dimensionless quantities).
+    Normalize table markdown content (units, math symbols, dimensionless quantities, subscripts).
     """
     if not table_md:
         return ""
@@ -96,20 +111,48 @@ def clean_table_markdown(table_md: str) -> str:
     # Replace dimensionless symbol placeholder [e] with [-]
     table_md = re.sub(r'\[e\]', '[-]', table_md)
 
-    # Normalize exponents in table units
+    # Normalize exponents and subscripts in table units
+    table_md = re.sub(r'<sup>\s*</sup>\s*<sup>\s*([0-9]+)\s*</sup>', r'<sup>-\1</sup>', table_md)
     table_md = re.sub(r'<sup>\s*[\ufffd¡−–]\s*([0-9a-zA-Z=/_+.-]+)\s*</sup>', r'<sup>-\1</sup>', table_md)
     table_md = re.sub(
         r'(\b(?:m|s|K|W|J|A|V|Pa|Hz|N|T|g|kg|mol)\b(?:\s*\(?[a-zA-Z0-9^/ ]+\)?)?)\s*<sup>\s*[\ufffd¡−–]\s*([0-9]+)\s*</sup>',
         r'\1<sup>-\2</sup>',
         table_md
     )
+    # Fix broken empty tags in units e.g. [J (gK)<sub></sub><sup>1</sup>] -> [J (gK)⁻¹]
+    table_md = re.sub(r'\(gK\)<sub>[^<]*</sub><sup>1</sup>', '(gK)<sup>-1</sup>', table_md)
+    table_md = re.sub(r'\(gK\)<sup>1</sup>', '(gK)<sup>-1</sup>', table_md)
+    table_md = re.sub(r'Am<sub>[^<]*</sub><sup>1</sup>', 'Am<sup>-1</sup>', table_md)
+    table_md = re.sub(r'Am<sup>1</sup>', 'Am<sup>-1</sup>', table_md)
+    table_md = re.sub(r'\(m<sup>2</sup>\s*K\)<sub>[^<]*</sub><sup>1</sup>', '(m<sup>2</sup> K)<sup>-1</sup>', table_md)
+    table_md = re.sub(r'\(mK\)<sub>[^<]*</sub><sup>1</sup>', '(mK)<sup>-1</sup>', table_md)
 
-    # Common math symbols in tables
+    # Subscript spacing and cleanliness
+    table_md = re.sub(r'<sub>\s+([0-9a-zA-Z=/_+.-]+)\s*</sub>', r'<sub>\1</sub>', table_md)
+    table_md = re.sub(r'\b([A-Za-z0-9α-ωΑ-Ω])\s+<sub>', r'\1<sub>', table_md)
+
+    # Common math symbols and nomenclature variables in tables
     table_md = table_md.replace("¼", "=")
     table_md = table_md.replace("þ", "+")
     table_md = table_md.replace("ð", "(")
     table_md = table_md.replace("Þ", ")")
     table_md = re.sub(r'T\(x;y\)', 'T(x,y)', table_md)
+    table_md = re.sub(r'T\(x;\s*y\)', 'T(x, y)', table_md)
+    table_md = re.sub(r'f\(x\)', 'f(x)', table_md)
+    table_md = re.sub(r'\b4\(x\)', 'ϕ(x)', table_md)
+    table_md = re.sub(r'\bJ\(x\)', 'ψ(x)', table_md)
+    table_md = re.sub(r'\bJ(?:<sub>)?a(?:</sub>)?;b\(x\)', 'ψ<sub>a,b</sub>(x)', table_md)
+    table_md = re.sub(r'\bJa;b\(x\)', 'ψ_{a,b}(x)', table_md)
+    table_md = re.sub(r'\bm(?:<sub>)?0(?:</sub>)?\b', 'μ<sub>0</sub>', table_md)
+    table_md = re.sub(r'\bu(?:<sub>)?0(?:</sub>)?\b', 'ω<sub>0</sub>', table_md)
+    table_md = re.sub(r'\bDTad\b', 'ΔT<sub>ad</sub>', table_md)
+    table_md = re.sub(r'\bDT<sub>ad</sub>\b', 'ΔT<sub>ad</sub>', table_md)
+    table_md = re.sub(r'\bCp\b', 'C<sub>p</sub>', table_md)
+    table_md = re.sub(r'\bkf\b', 'k<sub>f</sub>', table_md)
+    table_md = re.sub(r'\bBext\b', 'B<sub>ext</sub>', table_md)
+    table_md = re.sub(r'\bHext\b', 'H<sub>ext</sub>', table_md)
+    table_md = re.sub(r'\bHdem\b', 'H<sub>dem</sub>', table_md)
+    table_md = re.sub(r'\bHint\b', 'H<sub>int</sub>', table_md)
     table_md = re.sub(r'\bCp;([a-zA-Z0-9]+)\b', r'C_{p,\1}', table_md)
 
     return table_md
@@ -131,6 +174,7 @@ def clean_markdown_text(s: str) -> str:
     s = s.replace("Þ", ")")
 
     # --- 2. Exponents and Units (Superscripts) ---
+    s = re.sub(r'<sup>\s*</sup>\s*<sup>\s*([0-9]+)\s*</sup>', r'<sup>-\1</sup>', s)
     # Fix explicit minus signs replaced by \ufffd, ¡, etc. in superscripts: <sup>1</sup> -> <sup>-1</sup>
     s = re.sub(r'<sup>\s*[\ufffd¡−–]\s*([0-9a-zA-Z=/_+.-]+)\s*</sup>', r'<sup>-\1</sup>', s)
 
@@ -198,7 +242,7 @@ def clean_markdown_text(s: str) -> str:
     s = re.sub(r'magnetis[\ufffd]?\s*ee[\ufffd]?', 'magnétisée', s)
     s = re.sub(r'periodiquement[\ufffd]?', 'périodiquement', s)
 
-    # --- 6. Math Formulas and Expressions in Prose ---
+    # --- 6. Math Formulas, Subscripts, and Expressions in Prose ---
     s = re.sub(r'T\(x;y\)', 'T(x,y)', s)
     s = re.sub(r'T\(x;\s*t\)', 'T(x, t)', s)
     s = re.sub(r'\bJa;b\b', 'J_{a,b}', s)
@@ -217,6 +261,36 @@ def clean_markdown_text(s: str) -> str:
     s = re.sub(r'p4:45kf', r'√(4.45 kf)', s)
     s = re.sub(r'p3:71kf', r'√(3.71 kf)', s)
     s = re.sub(r'\bpkf\b', r'√(kf)', s)
+    s = re.sub(r'pffiffiffiffi[a-zA-Z0-9]*', '√(4.45 kf)', s)
+
+    # Subscripts & Variables in Prose
+    s = re.sub(r'<sub>\s+([0-9a-zA-Z=/_+.-]+)\s*</sub>', r'<sub>\1</sub>', s)
+    s = re.sub(r'\b([A-Za-z0-9α-ωΑ-Ω])\s+<sub>', r'\1<sub>', s)
+    s = re.sub(r'</sub>\s+([,.:;)\]])', r'<sub>\1', s)
+    s = re.sub(r'<sub>\s*</sub>', '', s)
+    s = re.sub(r'<sup>\s*</sup>', '', s)
+
+    # Symbol normalization
+    s = re.sub(r'\b(?:m|m<sub>0</sub>|m0)\s*H<sub>ext</sub>', 'μ<sub>0</sub> H<sub>ext</sub>', s)
+    s = re.sub(r'\bm0\b', 'μ<sub>0</sub>', s)
+    s = re.sub(r'\bm<sub>0</sub>\b', 'μ<sub>0</sub>', s)
+    s = re.sub(r'\bu<sub>0</sub>\b', 'ω<sub>0</sub>', s)
+    s = re.sub(r'\bu0\b', 'ω<sub>0</sub>', s)
+    s = re.sub(r'\bl<sub>0</sub>\b', 'λ<sub>0</sub>', s)
+    s = re.sub(r'\bl0\b(?:\s*of\s*the\s*fringes|\s*,\s*or)', 'λ<sub>0</sub>', s)
+    s = re.sub(r'\bk0\s*=', 'k<sub>0</sub> =', s)
+    s = re.sub(r'\bk0\b', 'k<sub>0</sub>', s)
+    s = re.sub(r'\bI0\b', 'I<sub>0</sub>', s)
+    s = re.sub(r'\bIa\b(?:\s*,\s*cos|\s*denote)', 'I<sub>a</sub>', s)
+    s = re.sub(r'\bf0\(x', 'f<sub>0</sub>(x', s)
+    s = re.sub(r'4\((?:bf\{x\}|\{bf\s*x\})\)', 'Δϕ(x)', s)
+    s = re.sub(r'\bDTad\b', 'ΔT<sub>ad</sub>', s)
+    s = re.sub(r'\bDT<sub>ad</sub>\b', 'ΔT<sub>ad</sub>', s)
+    s = re.sub(r'\bHext\b', 'H<sub>ext</sub>', s)
+    s = re.sub(r'\bHdem\b', 'H<sub>dem</sub>', s)
+    s = re.sub(r'\bHint\b', 'H<sub>int</sub>', s)
+    s = re.sub(r'\bBext\b', 'B<sub>ext</sub>', s)
+    s = re.sub(r'\bkf\b(?:\s*\(|\s*=|\s*re|\s*,)', 'k<sub>f</sub>', s)
 
     # --- 7. Vectors (e.g. MT-Extra font / arrow artifacts) ---
     s = re.sub(r'_B_\s*[\ufffd\x02]\s*_r_', r'$\\vec{B}_r$', s)
