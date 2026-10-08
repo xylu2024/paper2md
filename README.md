@@ -23,7 +23,8 @@ Converting complex scientific papers (e.g., from *Nature Portfolio*, *ACS*, *Sci
 1. **Two-Column Flow Restoration**: Powered by PyMuPDF layout analysis, eliminating column splitting and word gluing.
 2. **Local LaTeX Formula Recognition**: Automatically detects equation bounding boxes, passes them to a lightweight local ONNX model (**RapidLaTeXOCR**, ~0.3 s per equation), and outputs native KaTeX/MathJax `$$ ... $$` code with `\tag{}` equation numbers.
 3. **Clean Figure Management**: Extracts only authentic scientific figures and diagrams at high resolution (200+ DPI), while **automatically purging temporary equation snippet images** to keep your folder tidy.
-4. **Blazingly Fast & Lightweight**: Converts a 10-page dense article in 5–10 seconds on a standard CPU.
+4. **Font & Symbol Healing**: Eliminates replacement character artifacts (``), automatically restores negative unit exponents (e.g., `[J (gK)⁻¹]`, `W m⁻²`), dimensionless markers `[-]`, vector arrow symbols (`$\vec{B}$`, `$\vec{f}_L$`), and multilingual author accents (`Tušek`, `Poredoš`, `Universität`).
+5. **Blazingly Fast & Lightweight**: Converts a 10-page dense article in 5–10 seconds on a standard CPU.
 
 ---
 

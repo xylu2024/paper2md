@@ -4,5 +4,5 @@ Paper2MD: High-fidelity academic PDF to Markdown converter with LaTeX formula OC
 
 from .converter import convert_pdf_to_md
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["convert_pdf_to_md", "__version__"]

@@ -32,9 +32,16 @@ def main():
         sys.exit(1)
 
     ocr_model = None
-    if not args.no_ocr and _OCR_AVAILABLE:
-        print("[Paper2MD] Loading LaTeX OCR model...")
-        ocr_model = LaTeXOCR()
+    if not args.no_ocr:
+        if _OCR_AVAILABLE and LaTeXOCR is not None:
+            print("[Paper2MD] Loading LaTeX OCR model...")
+            try:
+                ocr_model = LaTeXOCR()
+            except Exception as e:
+                print(f"[Paper2MD] Warning: Could not initialize LaTeX OCR ({e}). Formulas will be kept as images.")
+        else:
+            print("[Paper2MD] Note: LaTeX OCR dependencies not installed. Formulas will be kept as images.")
+            print("           To enable LaTeX formula OCR, run: pip install rapid_latex_ocr requests")
 
     if target_path.is_file() and target_path.suffix.lower() == ".pdf":
         convert_pdf_to_md(
