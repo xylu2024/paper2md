@@ -16,7 +16,15 @@ if "%~1"=="" (
     exit /b 0
 )
 
+REM 1. Prefer pipx isolated environment if present
+if exist "%USERPROFILE%\.local\bin\paper2md.exe" (
+    "%USERPROFILE%\.local\bin\paper2md.exe" %*
+    goto :done
+)
+
+REM 2. Fallback to active Python environment
 python -m paper2md %*
 
+:done
 REM Pause if launched via double-click / drag-and-drop so user sees the summary
 echo %cmdcmdline% | find /i "%~0" >nul && pause
