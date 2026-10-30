@@ -91,6 +91,27 @@ def get_clean_fig_dir(pdf_file: Path) -> str:
     return f"{base}_figures"
 
 
+def strip_outer_braces(text: str) -> str:
+    """Strip redundant balanced outer braces, e.g. '{{expr}}' -> 'expr' without affecting '{a} + {b}'."""
+    text = text.strip()
+    while text.startswith('{') and text.endswith('}'):
+        depth = 0
+        encloses_all = True
+        for i, ch in enumerate(text):
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and i < len(text) - 1:
+                    encloses_all = False
+                    break
+        if encloses_all and depth == 0:
+            text = text[1:-1].strip()
+        else:
+            break
+    return text
+
+
 def clean_latex(latex_str: str) -> str:
     """Normalize and clean raw LaTeX OCR output for KaTeX/MathJax rendering."""
     s = latex_str.strip()
@@ -114,12 +135,32 @@ def clean_latex(latex_str: str) -> str:
                 tag = f" \\tag{{{clean_num}}}"
                 s = s[:tag_m.start()].strip()
 
-    # 3. Strip unnecessary \begin{array}{...} wrapping if single row
-    array_m = re.match(r'^\\begin\{array\}\{[^}]+\}\s*\{\{?(.*?)\}?\}\s*\\end\{array\}$', s, re.DOTALL)
+    # 3. Clean \begin{array} ... \end{array}
+    array_m = re.match(r'^\\begin\{array\}\{([^}]*)\}\s*(.*?)\s*\\end\{array\}$', s, re.DOTALL)
     if array_m:
-        inner = array_m.group(1).strip()
-        inner = re.sub(r'(?:\\qquad|\\quad|\\;|~|\s)+$', '', inner).strip()
-        s = inner
+        col_align = array_m.group(1)
+        inner = array_m.group(2).strip()
+
+        # If it has NO row break (\\) and NO column delimiter (&), it is a single 1x1 equation: unwrap safely
+        if r'\\' not in inner and '&' not in inner:
+            s = strip_outer_braces(inner)
+            s = re.sub(r'(?:\\qquad|\\quad|\\;|~|\s)+$', '', s).strip()
+        else:
+            # Multi-row or multi-column array: keep environment intact and clean OCR spacer artifacts
+            inner = re.sub(r'~+\s*(?=\}\}|&|\\\\|$)', '', inner)
+            empty_cell = r'(?:\{+\s*\}+|\s|~)*'
+            empty_row = r'\\\\\s*(?:' + empty_cell + r'&)*' + empty_cell + r'\\\\'
+            while re.search(empty_row, inner):
+                inner = re.sub(empty_row, r'\\\\', inner)
+            trailing_cells = r'(?:&\s*(?:\{+\s*\}+|\s|~)*)+(?=\s*(?:\\\\|$))'
+            inner = re.sub(trailing_cells, '', inner)
+            inner = re.sub(r'\\\\\s*(?:' + empty_cell + r'&)*' + empty_cell + r'\s*$', '', inner)
+            inner = re.sub(r'\\\\\s*$', '', inner).strip()
+            s = f"\\begin{{array}}{{{col_align}}}\n{inner}\n\\end{{array}}"
+    else:
+        # If formula has naked & or \\ and is not inside an alignment environment, wrap in aligned
+        if ('&' in s or r'\\' in s) and not re.search(r'\\begin\{(?:aligned|array|[pbBvV]?matrix|cases|gather|split)\}', s):
+            s = f"\\begin{{aligned}}\n{s}\n\\end{{aligned}}"
 
     # 4. Clean bold font notation: \bf{\bf x} -> \mathbf{x}
     s = re.sub(r'\\bf\{\\bf\s+([^}]+)\}', r'\\mathbf{\1}', s)
