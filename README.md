@@ -208,16 +208,27 @@ pip install -e .
 # 1. Convert a single paper (creates paper.md and a clean figures folder)
 paper2md "path/to/paper.pdf"
 
-# 2. Batch convert all PDF papers in the current directory
-paper2md .
-
-# 3. Batch convert all PDF papers in a target directory
+# 2. Batch convert: Pass a folder to automatically convert all PDFs inside it
 paper2md "D:/PhD/Literature"
 
-# 4. Custom figure DPI resolution (default: 200, use 300 for high-res publication figures)
+# 3. Batch convert multiple files and/or folders in one go
+paper2md "paper1.pdf" "paper2.pdf" "D:/PhD/Literature"
+
+# 4. Recursive scan: Find all PDFs in target directory and all subdirectories
+paper2md "D:/PhD/Literature" -r
+
+# 5. Smart Incremental Skip & Force re-conversion
+# By default, Paper2MD automatically skips already converted documents (tracked via figures/status.json).
+# To force re-converting even cached papers, add -f or --force:
+paper2md "D:/PhD/Literature" -f
+
+# 6. Windows Drag & Drop Support
+# Drag and drop any PDF file(s) or folder(s) directly onto paper2md.bat!
+
+# 7. Custom figure DPI resolution (default: 200, use 300 for high-res publication figures)
 paper2md "paper.pdf" --dpi 300
 
-# 5. Fast mode: Skip formula OCR (keeps equations as images)
+# 8. Fast mode: Skip formula OCR (keeps equations as images)
 paper2md "paper.pdf" --no-ocr
 ```
 
@@ -251,7 +262,8 @@ When processing `Bidmon_2026.pdf`, Paper2MD generates:
 Literature/
 ├── Bidmon_2026.pdf
 ├── Bidmon_2026.md                    <-- Clean Markdown with LaTeX equations
-└── Bidmon_2026_figures/              <-- Only genuine figures & charts
+└── Bidmon_2026_figures/              <-- Genuine figures & conversion cache
+    ├── status.json                   <-- Structured conversion status, formula count, & metadata
     ├── Bidmon_2026.pdf-0004-03.png   <-- Figure 1
     ├── Bidmon_2026.pdf-0005-05.png   <-- Figure 2
     └── ...

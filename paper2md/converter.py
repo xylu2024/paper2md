@@ -8,8 +8,10 @@ Core conversion logic for Paper2MD:
 
 import os
 import re
+import json
+import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import pymupdf
 from pymupdf4llm.helpers import document_layout
@@ -81,14 +83,96 @@ def _patch_rapid_latex_ocr():
 _patch_rapid_latex_ocr()
 
 
-def get_clean_fig_dir(pdf_file: Path) -> str:
-    """Generate a clean, space-free folder name for extracted figures."""
+def get_clean_fig_dir(pdf_file: Path, output_md_path: Optional[Path] = None) -> str:
+    """
+    Generate a clean, space-free, unique folder name for extracted figures.
+    Preserves legacy folders (e.g. doc_2025_figures) if previously created for this document.
+    """
+    # Legacy calculation
     m = re.match(r'^([a-zA-Z0-9]+)', pdf_file.stem)
-    base = m.group(1) if m else "doc"
+    legacy_base = m.group(1) if m else "doc"
     year_m = re.search(r'\b(19\d\d|20\d\d)\b', pdf_file.stem)
-    if year_m:
-        return f"{base}_{year_m.group(1)}_figures"
-    return f"{base}_figures"
+    legacy_dir_name = f"{legacy_base}_{year_m.group(1)}_figures" if year_m else f"{legacy_base}_figures"
+
+    # 1. If legacy dir exists and has status.json matching this pdf:
+    legacy_dir = pdf_file.parent / legacy_dir_name
+    status_file = legacy_dir / "status.json"
+    if status_file.exists():
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("pdf_name") == pdf_file.name:
+                return legacy_dir_name
+        except Exception:
+            pass
+
+    # 2. If existing output markdown already references legacy_dir_name:
+    if output_md_path and output_md_path.exists() and legacy_dir.exists():
+        try:
+            with open(output_md_path, "r", encoding="utf-8") as f:
+                snippet = f.read(4096)
+            if legacy_dir_name in snippet:
+                return legacy_dir_name
+        except Exception:
+            pass
+
+    # 3. Otherwise, generate a clean, unique name based on the PDF filename stem:
+    clean_stem = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', pdf_file.stem)
+    clean_stem = re.sub(r"[\s\-_]+", "_", clean_stem).strip("_")
+    if len(clean_stem) > 40:
+        clean_stem = clean_stem[:40].rstrip("_")
+    if not clean_stem:
+        return legacy_dir_name
+    return f"{clean_stem}_figures"
+
+
+def write_conversion_status(status_file: Path, data: dict):
+    """Write conversion status to a json file in the figures directory."""
+    try:
+        status_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"    [Warn] Could not write status to {status_file.name}: {e}")
+
+
+def check_already_converted(pdf_file: Path, output_md_path: Path, fig_dir: Path) -> bool:
+    """Check if a PDF paper has already been successfully converted to Markdown."""
+    if not output_md_path.exists() or output_md_path.stat().st_size == 0:
+        return False
+
+    status_file = fig_dir / "status.json"
+    if status_file.exists():
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("status") == "success":
+                rec_mtime = data.get("pdf_mtime")
+                if rec_mtime and pdf_file.stat().st_mtime > rec_mtime + 1.0:
+                    return False
+                return True
+        except Exception:
+            pass
+
+    # Backfill status.json if output markdown exists and is non-empty
+    if fig_dir.exists():
+        try:
+            backfill = {
+                "status": "success",
+                "pdf_name": pdf_file.name,
+                "pdf_size_bytes": pdf_file.stat().st_size,
+                "pdf_mtime": pdf_file.stat().st_mtime,
+                "output_md": output_md_path.name,
+                "converted_at": datetime.datetime.fromtimestamp(output_md_path.stat().st_mtime).isoformat(),
+                "paper2md_version": "0.1.5",
+                "backfilled": True
+            }
+            write_conversion_status(status_file, backfill)
+            return True
+        except Exception:
+            pass
+
+    return False
 
 
 def strip_outer_braces(text: str) -> str:
@@ -448,7 +532,9 @@ def convert_pdf_to_md(
     dpi: int = 200,
     enable_formula_ocr: bool = True,
     ocr_model: Optional["LaTeXOCR"] = None,
-) -> str:
+    force: bool = False,
+    return_details: bool = False,
+) -> Union[str, dict]:
     """
     Convert a single PDF paper to Markdown with figures, LaTeX formulas, and cleaned symbols.
     
@@ -458,9 +544,11 @@ def convert_pdf_to_md(
         dpi: Resolution for extracted figures (default: 200).
         enable_formula_ocr: Whether to run OCR on formulas to convert them into LaTeX.
         ocr_model: Optional pre-loaded LaTeXOCR instance.
+        force: If True, re-convert even if already successfully converted.
+        return_details: If True, returns a dict with status details.
 
     Returns:
-        The path of the generated markdown file.
+        The path of the generated markdown file, or a details dict if return_details=True.
     """
     _install_subscript_patches()
     pdf_file = Path(pdf_path).resolve()
@@ -472,8 +560,25 @@ def convert_pdf_to_md(
     else:
         output_md_path = Path(output_md_path).resolve()
 
-    fig_dir_name = get_clean_fig_dir(pdf_file)
+    fig_dir_name = get_clean_fig_dir(pdf_file, output_md_path)
     fig_dir = pdf_file.parent / fig_dir_name
+    status_file = fig_dir / "status.json"
+
+    # Fast Skip if already converted
+    if not force and check_already_converted(pdf_file, output_md_path, fig_dir):
+        print(f"\n[Paper2MD] Skipping (already converted): {pdf_file.name}")
+        print(f"  -> Markdown: {output_md_path.name}")
+        print(f"  -> Figures:  {fig_dir_name}/")
+        print(f"  -> Status:   {fig_dir_name}/status.json")
+        if return_details:
+            return {
+                "output_md": str(output_md_path),
+                "status": "skipped",
+                "pdf_name": pdf_file.name,
+                "fig_dir": str(fig_dir),
+            }
+        return str(output_md_path)
+
     fig_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n[Paper2MD] Processing: {pdf_file.name}")
@@ -531,7 +636,6 @@ def convert_pdf_to_md(
                             except Exception as e:
                                 print(f"    [Warn] Formula OCR error on {img_path.name}: {e}")
                             finally:
-                                # Remove temporary formula snippet file so figures folder stays tidy
                                 try:
                                     img_path.unlink(missing_ok=True)
                                 except Exception:
@@ -574,7 +678,6 @@ def convert_pdf_to_md(
                 if not hasattr(box, "textlines") or not box.textlines:
                     continue
 
-                # Clean spans in textlines before converting to markdown
                 clean_textlines(box.textlines)
 
                 # Headings & Text
@@ -596,8 +699,48 @@ def convert_pdf_to_md(
         with open(output_md_path, "w", encoding="utf-8") as f:
             f.write(md_output)
 
+        # Record successful conversion status in figures/status.json
+        status_data = {
+            "status": "success",
+            "pdf_name": pdf_file.name,
+            "pdf_size_bytes": pdf_file.stat().st_size,
+            "pdf_mtime": pdf_file.stat().st_mtime,
+            "output_md": output_md_path.name,
+            "converted_at": datetime.datetime.now().isoformat(),
+            "paper2md_version": "0.1.5",
+            "dpi": dpi,
+            "formula_ocr": enable_formula_ocr and _OCR_AVAILABLE,
+            "formulas_count": formulas_count,
+            "figures_count": figures_count,
+        }
+        write_conversion_status(status_file, status_data)
+
         print(f"  [Success] Done! Formulas converted: {formulas_count}, Figures preserved: {figures_count}")
+        print(f"  [Status] Saved status to: {fig_dir_name}/status.json")
+
+        if return_details:
+            return {
+                "output_md": str(output_md_path),
+                "status": "converted",
+                "pdf_name": pdf_file.name,
+                "formulas_count": formulas_count,
+                "figures_count": figures_count,
+                "fig_dir": str(fig_dir),
+            }
         return str(output_md_path)
+
+    except Exception as e:
+        error_data = {
+            "status": "failed",
+            "pdf_name": pdf_file.name,
+            "pdf_size_bytes": pdf_file.stat().st_size if pdf_file.exists() else 0,
+            "pdf_mtime": pdf_file.stat().st_mtime if pdf_file.exists() else 0,
+            "error": str(e),
+            "failed_at": datetime.datetime.now().isoformat(),
+            "paper2md_version": "0.1.5"
+        }
+        write_conversion_status(status_file, error_data)
+        raise e
 
     finally:
         os.chdir(orig_cwd)
