@@ -35,6 +35,52 @@ except Exception as e:
     _OCR_ERROR = str(e)
 
 
+def _patch_rapid_latex_ocr():
+    """
+    Patch rapid_latex_ocr for NumPy 2.0+ compatibility.
+    rapid_latex_ocr (<=0.0.9) contains int(np.argmax(resizer_res, axis=-1)) which fails
+    in NumPy 2.0+ with:
+      TypeError: only 0-dimensional arrays can be converted to Python scalars
+    because resizer_res has shape (1, 21) and np.argmax returns a 1D array of shape (1,).
+    """
+    try:
+        from rapid_latex_ocr import LaTeXOCR
+        import numpy as np
+        from PIL import Image
+
+        orig_loop = getattr(LaTeXOCR, "loop_image_resizer", None)
+        if not orig_loop:
+            return
+
+        def patched_loop_image_resizer(self, img: np.ndarray) -> np.ndarray:
+            pillow_img = Image.fromarray(img)
+            pad_img = self.pre_pro.pad(pillow_img)
+            input_image = self.pre_pro.minmax_size(pad_img).convert("RGB")
+            r, w, h = 1, input_image.size[0], input_image.size[1]
+            for _ in range(10):
+                h = int(h * r)
+                final_img, pad_img = self.pre_process(input_image, r, w, h)
+
+                resizer_res = self.image_resizer([final_img.astype(np.float32)])[0]
+
+                # Extract scalar safely across NumPy 1.x and NumPy 2.x
+                argmax_res = np.argmax(resizer_res, axis=-1)
+                argmax_idx = int(np.asarray(argmax_res).flat[0])
+                w = (argmax_idx + 1) * 32
+                if w == pad_img.size[0]:
+                    break
+
+                r = w / pad_img.size[0]
+            return final_img
+
+        LaTeXOCR.loop_image_resizer = patched_loop_image_resizer
+    except Exception:
+        pass
+
+
+_patch_rapid_latex_ocr()
+
+
 def get_clean_fig_dir(pdf_file: Path) -> str:
     """Generate a clean, space-free folder name for extracted figures."""
     m = re.match(r'^([a-zA-Z0-9]+)', pdf_file.stem)
