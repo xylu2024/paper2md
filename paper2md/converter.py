@@ -27,6 +27,7 @@ from pymupdf4llm.helpers.document_layout import (
 )
 
 from .cleaner import clean_font_span, clean_textlines, clean_table_markdown, clean_markdown_text
+from .version import __version__
 
 try:
     from rapid_latex_ocr import LaTeXOCR
@@ -164,7 +165,7 @@ def check_already_converted(pdf_file: Path, output_md_path: Path, fig_dir: Path)
                 "pdf_mtime": pdf_file.stat().st_mtime,
                 "output_md": output_md_path.name,
                 "converted_at": datetime.datetime.fromtimestamp(output_md_path.stat().st_mtime).isoformat(),
-                "paper2md_version": "0.1.5",
+                "paper2md_version": __version__,
                 "backfilled": True
             }
             write_conversion_status(status_file, backfill)
@@ -707,7 +708,7 @@ def convert_pdf_to_md(
             "pdf_mtime": pdf_file.stat().st_mtime,
             "output_md": output_md_path.name,
             "converted_at": datetime.datetime.now().isoformat(),
-            "paper2md_version": "0.1.5",
+            "paper2md_version": __version__,
             "dpi": dpi,
             "formula_ocr": enable_formula_ocr and _OCR_AVAILABLE,
             "formulas_count": formulas_count,
@@ -737,7 +738,7 @@ def convert_pdf_to_md(
             "pdf_mtime": pdf_file.stat().st_mtime if pdf_file.exists() else 0,
             "error": str(e),
             "failed_at": datetime.datetime.now().isoformat(),
-            "paper2md_version": "0.1.5"
+            "paper2md_version": __version__
         }
         write_conversion_status(status_file, error_data)
         raise e
